@@ -26,6 +26,9 @@ jobs:
       - name: Run scraper
         run: python -m scraper.run
 
+      - name: Find reposts
+        run: python -m scraper.find_reposts
+
       - name: Commit new data
         run: |
           git config user.name "ghost-job-radar-bot"
