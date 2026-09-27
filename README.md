@@ -21,16 +21,19 @@ Running this for several weeks builds a lifecycle history per posting — how lo
 
 After each scrape, `scraper/find_reposts.py` runs entity resolution over the full posting history: same company + title similarity (token-sort ratio) + description similarity (TF-IDF cosine) + reappearance within 45 days flags a removed posting and a later one as a probable repost, written to a `repost_links` table. See `scraper/entity_resolution.py` for the matching logic and `tests/test_entity_resolution.py` for synthetic-data tests of it (real repost pairs take weeks of collection to show up, so the matching logic is tested independently of live data).
 
+Separately, `scraper/build_audit_set.py` samples postings into `data/audit_set.csv` for hand-labeling (real / likely_ghost / unsure). This -- not the heuristic labels above -- is what the classifier's precision/recall eventually gets reported against, so it needs an actual person's judgment on a real cross-section of postings. Sampling is stratified by source and capped per company so it isn't dominated by whichever company happens to have the most open reqs, and re-running the tool only adds new postings on top of whatever's already been labeled -- it never touches or re-samples a row that's already been hand-labeled.
+
 ## Status
 
-Data collection and repost detection are done. Labeling heuristics, the manual audit set, and the classifier come next, once there's enough lifecycle history to work with.
+Data collection, repost detection, and the audit-set sampling tool are done. Filling in the audit set by hand, exact labeling-heuristic thresholds, feature engineering, and the classifier come next.
 
 ## Running it yourself
 
 ```
 pip install -r requirements.txt
-python -m scraper.run          # scrape + update lifecycle DB
-python -m scraper.find_reposts # detect reposts from the current DB
+python -m scraper.run             # scrape + update lifecycle DB
+python -m scraper.find_reposts    # detect reposts from the current DB
+python -m scraper.build_audit_set # sample postings into data/audit_set.csv for hand-labeling
 python -m unittest discover -s tests
 ```
 
