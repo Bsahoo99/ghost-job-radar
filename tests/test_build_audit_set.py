@@ -6,7 +6,6 @@ Covers the two properties that matter for a hand-labeling workflow:
   2. Re-running the tool never loses or re-samples an already-labeled row.
 """
 
-import csv
 import tempfile
 import unittest
 from pathlib import Path

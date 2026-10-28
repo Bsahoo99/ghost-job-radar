@@ -23,7 +23,7 @@ repost_links and scraper/db.py's postings table are the only inputs.
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
 
