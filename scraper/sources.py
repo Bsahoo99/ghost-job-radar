@@ -23,6 +23,8 @@ Network calls only work from an environment with real internet access
 (e.g. GitHub Actions) -- this sandbox's shell cannot reach these hosts.
 """
 
+import html
+
 import requests
 
 USER_AGENT = "ghost-job-radar/0.1 (personal research project; contact via GitHub)"
@@ -59,7 +61,9 @@ def fetch_remoteok():
 
 def fetch_greenhouse(company_display_name, board_slug):
     """A single company's Greenhouse board. Returns [] (not an error) on 404."""
-    url = f"https://boards-api.greenhouse.io/v1/boards/{board_slug}/jobs"
+    # content=true is what makes the list endpoint include each job's
+    # description (HTML-escaped HTML); without it the description is absent.
+    url = f"https://boards-api.greenhouse.io/v1/boards/{board_slug}/jobs?content=true"
     resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
     if resp.status_code == 404:
         return []
@@ -81,7 +85,7 @@ def fetch_greenhouse(company_display_name, board_slug):
             "salary_max": None,
             "first_published": job.get("first_published"),
             "updated_at": job.get("updated_at"),
-            "description": "",  # Greenhouse's list endpoint omits full description; fetched per-job if needed
+            "description": html.unescape(job.get("content") or ""),
         })
     return out
 
