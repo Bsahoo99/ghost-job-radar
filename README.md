@@ -8,10 +8,11 @@ I've been job hunting since February and applied to 30+ roles across two applica
 
 ## What it does
 
-Every day, a scheduled job pulls current listings from a mix of sources:
+Every day, a scheduled job pulls the full public job board of every company on a watchlist (`scraper/companies.py`, seeded from my own recent application list) through the [Greenhouse](https://developers.greenhouse.io/job-board.html), [Lever](https://github.com/lever/postings-api) and [Ashby](https://developers.ashbyhq.com/docs/public-job-posting-api) public job board APIs.
 
-- [RemoteOK's public API](https://remoteok.com/api) — a broad, messy, unmoderated feed (great for messy-data practice, plenty of spam/low-quality postings mixed in with real ones)
-- [Greenhouse](https://developers.greenhouse.io/job-board.html) and [Lever](https://github.com/lever/postings-api) public job board APIs for a watchlist of companies (seeded from my own recent application list)
+Each of those APIs returns a company's complete board on every call, which is what lets "gone from today's pull" mean "taken down".
+RemoteOK was tracked for the first month and then dropped for exactly that reason: its feed only returns the newest ~99 jobs, so a posting falling out of it just meant newer ones pushed it out.
+Its raw daily pulls are still in `data/snapshots/`.
 
 Each day's pull is:
 1. Saved as a raw JSONL snapshot in `data/snapshots/` (so the exact daily data is visible in git history)
@@ -25,7 +26,8 @@ Separately, `scraper/build_audit_set.py` samples postings into `data/audit_set.c
 
 ## Status
 
-Data collection, repost detection, and the audit-set sampling tool are done. Filling in the audit set by hand, exact labeling-heuristic thresholds, feature engineering, and the classifier come next.
+Data collection (daily since 2026-09-27), repost detection, the audit-set sampling tool, and a first pass at feature engineering (`scraper/features.py`) are done.
+Filling in the audit set by hand, exact labeling-heuristic thresholds, and the classifier come next.
 
 ## Running it yourself
 

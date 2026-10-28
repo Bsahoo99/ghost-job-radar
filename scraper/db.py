@@ -8,7 +8,7 @@ without really changing. A single scrape is a snapshot; this table is the
 memory across scrapes that makes those patterns visible.
 
 Schema (table: postings):
-    source            TEXT   -- remoteok / greenhouse / lever
+    source            TEXT   -- greenhouse / lever / ashby
     source_job_id     TEXT   -- id from the origin platform
     company           TEXT
     title             TEXT
@@ -97,6 +97,7 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
     _migrate_add_description_column(conn)
+    _migrate_drop_remoteok(conn)
     return conn
 
 
@@ -112,22 +113,44 @@ def _migrate_add_description_column(conn):
         conn.commit()
 
 
+def _migrate_drop_remoteok(conn):
+    """Delete RemoteOK rows (and any repost links touching them), once.
+
+    RemoteOK's feed only ever returns its newest ~99 jobs, so its
+    removed_date values recorded "pushed out by newer jobs", not "taken
+    down" -- lifecycle data that would teach the classifier the wrong thing.
+    The source was dropped on 2026-10-28; the raw daily pulls stay in
+    data/snapshots/ for anyone who wants them.
+    """
+    deleted = conn.execute("DELETE FROM postings WHERE source = 'remoteok'").rowcount
+    conn.execute(
+        "DELETE FROM repost_links WHERE old_source = 'remoteok' OR new_source = 'remoteok'"
+    )
+    if deleted:
+        conn.commit()
+
+
 def _hash_description(text):
     if not text:
         return None
     return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
 
 
-def upsert_postings(conn, postings, scrape_date):
+def upsert_postings(conn, postings, scrape_date, fetched_boards):
     """
     postings: list of normalized dicts from scraper/sources.py
     scrape_date: ISO date string (YYYY-MM-DD) for this run
+    fetched_boards: set of (source, company) pairs whose board was fetched
+        successfully this run, including boards that came back empty
 
     Any row already in the table whose (source, source_job_id) is NOT in
-    `postings` this run is considered removed as of `scrape_date` (only set
-    once -- first disappearance wins, so re-appearing sets last_seen_date but
-    does not clear removed_date; that's a signal in itself, handled at
-    analysis time, not here).
+    `postings` this run is considered removed as of `scrape_date` -- but only
+    if its (source, company) board is in `fetched_boards`. A board whose
+    fetch failed (timeout, 5xx, 404) tells us nothing about its postings, so
+    they are left alone rather than all marked removed on the same day.
+    removed_date is only set once -- first disappearance wins, so
+    re-appearing sets last_seen_date but does not clear removed_date; that's
+    a signal in itself, handled at analysis time, not here.
     """
     seen_keys = set()
     for p in postings:
@@ -176,10 +199,10 @@ def upsert_postings(conn, postings, scrape_date):
 
     # Mark newly-missing rows as removed (only if not already marked).
     rows = conn.execute(
-        "SELECT source, source_job_id FROM postings WHERE removed_date IS NULL"
+        "SELECT source, source_job_id, company FROM postings WHERE removed_date IS NULL"
     ).fetchall()
-    for source, source_job_id in rows:
-        if (source, source_job_id) not in seen_keys:
+    for source, source_job_id, company in rows:
+        if (source, source_job_id) not in seen_keys and (source, company) in fetched_boards:
             conn.execute(
                 "UPDATE postings SET removed_date = ? WHERE source = ? AND source_job_id = ?",
                 (scrape_date, source, source_job_id),

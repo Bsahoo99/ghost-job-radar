@@ -3,7 +3,7 @@ Source-specific fetchers. Every function returns a list of dicts in the
 same normalized shape, regardless of where the posting came from:
 
     {
-        "source":        "remoteok" | "greenhouse" | "lever",
+        "source":        "greenhouse" | "lever" | "ashby",
         "source_job_id": str   -- stable id from the origin platform
         "company":        str,
         "title":          str,
@@ -19,8 +19,12 @@ same normalized shape, regardless of where the posting came from:
 
 Every fetcher must be defensive: a single company's board being missing
 (404), rate-limited, or malformed should never take down the whole run.
-Network calls only work from an environment with real internet access
-(e.g. GitHub Actions) -- this sandbox's shell cannot reach these hosts.
+
+Every source here returns a company's COMPLETE board on each call, which is
+what makes "missing from today's pull" mean "taken down". RemoteOK was
+dropped on 2026-10-28 for failing that test: its feed only ever returns the
+newest ~99 jobs, so a posting falling out of it just meant newer ones pushed
+it out (see the 2026-10-28 note in db.py).
 """
 
 import html
@@ -31,42 +35,17 @@ USER_AGENT = "ghost-job-radar/0.1 (personal research project; contact via GitHub
 TIMEOUT = 20
 
 
-def fetch_remoteok():
-    """RemoteOK's public JSON feed. First element is a legal/ToS notice, not a job."""
-    url = "https://remoteok.com/api"
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-    resp.raise_for_status()
-    rows = resp.json()
-
-    out = []
-    for row in rows:
-        if "id" not in row:
-            continue  # the leading legal-notice object has no "id"
-        out.append({
-            "source": "remoteok",
-            "source_job_id": str(row.get("id")),
-            "company": row.get("company", "").strip(),
-            "title": row.get("position", "").strip(),
-            "location": row.get("location", "") or "Remote",
-            "remote": True,
-            "url": row.get("url") or row.get("apply_url"),
-            "salary_min": row.get("salary_min") or None,
-            "salary_max": row.get("salary_max") or None,
-            "first_published": row.get("date"),
-            "updated_at": row.get("date"),  # RemoteOK doesn't expose a separate update time
-            "description": row.get("description", ""),
-        })
-    return out
-
-
 def fetch_greenhouse(company_display_name, board_slug):
-    """A single company's Greenhouse board. Returns [] (not an error) on 404."""
+    """A single company's Greenhouse board.
+
+    A 404 raises like any other HTTP error rather than returning []: an
+    empty list would mark every posting we have for this company as taken
+    down, when what actually happened is the board went unreachable.
+    """
     # content=true is what makes the list endpoint include each job's
     # description (HTML-escaped HTML); without it the description is absent.
     url = f"https://boards-api.greenhouse.io/v1/boards/{board_slug}/jobs?content=true"
     resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-    if resp.status_code == 404:
-        return []
     resp.raise_for_status()
     jobs = resp.json().get("jobs", [])
 
@@ -91,11 +70,9 @@ def fetch_greenhouse(company_display_name, board_slug):
 
 
 def fetch_lever(company_display_name, lever_slug):
-    """A single company's Lever board. Returns [] (not an error) on 404."""
+    """A single company's Lever board. A 404 raises (see fetch_greenhouse)."""
     url = f"https://api.lever.co/v0/postings/{lever_slug}?mode=json"
     resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-    if resp.status_code == 404:
-        return []
     resp.raise_for_status()
     jobs = resp.json()
 
@@ -116,5 +93,46 @@ def fetch_lever(company_display_name, lever_slug):
             "first_published": None,  # Lever doesn't expose a created timestamp on this endpoint
             "updated_at": job.get("createdAt"),  # epoch millis; normalized in run.py
             "description": job.get("descriptionPlain", "") or job.get("description", ""),
+        })
+    return out
+
+
+def _ashby_salary(compensation):
+    """(min, max) annual salary from an Ashby compensation block, or (None, None).
+
+    Only a yearly "Salary" component counts; equity, bonus and hourly
+    components are skipped rather than mixed into one number.
+    """
+    for component in (compensation or {}).get("summaryComponents") or []:
+        if component.get("compensationType") == "Salary" and component.get("interval") == "1 YEAR":
+            return component.get("minValue"), component.get("maxValue")
+    return None, None
+
+
+def fetch_ashby(company_display_name, ashby_slug):
+    """A single company's Ashby board. A 404 raises (see fetch_greenhouse)."""
+    url = f"https://api.ashbyhq.com/posting-api/job-board/{ashby_slug}?includeCompensation=true"
+    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+    resp.raise_for_status()
+    jobs = resp.json().get("jobs", [])
+
+    out = []
+    for job in jobs:
+        if not job.get("isListed", True):
+            continue  # unlisted jobs are only reachable by direct link, not part of the public board
+        salary_min, salary_max = _ashby_salary(job.get("compensation"))
+        out.append({
+            "source": "ashby",
+            "source_job_id": str(job.get("id")),
+            "company": company_display_name,
+            "title": (job.get("title") or "").strip(),
+            "location": job.get("location") or "",
+            "remote": job.get("isRemote"),
+            "url": job.get("jobUrl"),
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "first_published": job.get("publishedAt"),
+            "updated_at": None,  # Ashby's public board doesn't expose an update time
+            "description": job.get("descriptionHtml") or job.get("descriptionPlain") or "",
         })
     return out

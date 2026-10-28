@@ -21,45 +21,44 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
 
 
+FETCHERS = {
+    "greenhouse": sources.fetch_greenhouse,
+    "lever": sources.fetch_lever,
+    "ashby": sources.fetch_ashby,
+}
+
+
 def collect_all():
+    """Fetch every watchlist board.
+
+    Returns (postings, fetched_boards, errors). fetched_boards holds the
+    (source, company) pair of every board that was fetched successfully --
+    db.upsert_postings only marks postings removed on those boards, so one
+    failed request can't make a whole company's postings look taken down.
+    """
     all_postings = []
+    fetched_boards = set()
     errors = []
 
-    try:
-        remoteok = sources.fetch_remoteok()
-        all_postings.extend(remoteok)
-        print(f"[remoteok] {len(remoteok)} postings")
-    except Exception as e:
-        errors.append(f"remoteok: {e}")
-        print(f"[remoteok] FAILED: {e}", file=sys.stderr)
+    for company_name, platform, slug in WATCHLIST:
+        try:
+            jobs = FETCHERS[platform](company_name, slug)
+        except Exception as e:
+            errors.append(f"{platform}:{slug}: {e}")
+            print(f"[{platform}:{slug}] FAILED: {e}", file=sys.stderr)
+            continue
+        all_postings.extend(jobs)
+        fetched_boards.add((platform, company_name))
+        print(f"[{platform}:{slug}] {len(jobs)} postings")
 
-    for company_name, gh_slug, lever_slug in WATCHLIST:
-        if gh_slug:
-            try:
-                jobs = sources.fetch_greenhouse(company_name, gh_slug)
-                all_postings.extend(jobs)
-                print(f"[greenhouse:{gh_slug}] {len(jobs)} postings")
-            except Exception as e:
-                errors.append(f"greenhouse:{gh_slug}: {e}")
-                print(f"[greenhouse:{gh_slug}] FAILED: {e}", file=sys.stderr)
-
-        if lever_slug:
-            try:
-                jobs = sources.fetch_lever(company_name, lever_slug)
-                all_postings.extend(jobs)
-                print(f"[lever:{lever_slug}] {len(jobs)} postings")
-            except Exception as e:
-                errors.append(f"lever:{lever_slug}: {e}")
-                print(f"[lever:{lever_slug}] FAILED: {e}", file=sys.stderr)
-
-    return all_postings, errors
+    return all_postings, fetched_boards, errors
 
 
 def main():
     scrape_date = date.today().isoformat()
     print(f"=== ghost-job-radar scrape: {scrape_date} ===")
 
-    postings, errors = collect_all()
+    postings, fetched_boards, errors = collect_all()
     print(f"Total normalized postings this run: {len(postings)}")
     if errors:
         print(f"{len(errors)} source(s) failed this run (see stderr above); continuing with what succeeded.")
@@ -74,7 +73,7 @@ def main():
 
     # 2. Lifecycle DB -- upsert so we can track first_seen/last_seen/removed over time.
     conn = get_connection()
-    upsert_postings(conn, postings, scrape_date)
+    upsert_postings(conn, postings, scrape_date, fetched_boards)
     conn.close()
     print("Upserted into data/postings.db")
 

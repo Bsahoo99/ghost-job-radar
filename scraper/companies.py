@@ -20,23 +20,38 @@ an opt-in setting separate from the hosted careers page, so a company can be
 a wrong slug.
 
 Confirmed on a different ATS entirely (mostly Ashby, not Greenhouse/Lever):
-Hinge Health, LangChain, Modal, Replit, Linear. Ashby has its own public API
-(api.ashbyhq.com/posting-api/job-board/{slug}) -- worth adding as a fourth
-source later, documented as a stretch goal rather than built now.
+Hinge Health, LangChain, Modal, Replit, Linear. Ashby was added as a third
+source on 2026-10-28 (api.ashbyhq.com/posting-api/job-board/{slug}), and
+probing it the same way turned up several companies listed above as
+"no evidence found" -- they were never on Greenhouse/Lever, they're on
+Ashby: OpenAI, Notion, Perplexity, Ramp, Cursor, Braintrust (the agent
+observability company, confirmed from the job descriptions) and Kong
+(confirmed the same way).
 
-Removed with no evidence found on either platform under any guessed slug:
-Kong, Braintrust (the only Greenhouse hit was the unrelated "Braintrust
-Tutors"), Ramp (the only Greenhouse hit was the unrelated "Ramp Network"),
-Anysphere/Cursor, Rippling, Deel, OpenAI, Mercury.
+Still not found on any of the three: Retool, Rippling, Anysphere (Cursor's
+board is under "cursor"), Mercury and Deel (Ashby boards exist but list 0
+jobs, so they'd add nothing).
 """
 
-# (display_name, greenhouse_slug_or_None, lever_slug_or_None)
+# (display_name, platform, board_slug) -- platform is "greenhouse", "lever" or "ashby"
 WATCHLIST = [
-    ("Vercel", "vercel", None),
-    ("Scale AI", "scaleai", None),
-    ("Together AI", "togetherai", None),
-    ("Handshake", "handshake", None),
-    ("Pinterest", "pinterest", None),
-    ("Arize AI", "arizeai", None),  # was "arize" -- wrong slug, confirmed 26 jobs at "arizeai"
-    ("Airtable", "airtable", None),  # was listed under Lever -- actually Greenhouse, confirmed 3 jobs
+    ("Vercel", "greenhouse", "vercel"),
+    ("Scale AI", "greenhouse", "scaleai"),
+    ("Together AI", "greenhouse", "togetherai"),
+    ("Handshake", "greenhouse", "handshake"),
+    ("Pinterest", "greenhouse", "pinterest"),
+    ("Arize AI", "greenhouse", "arizeai"),  # was "arize" -- wrong slug, confirmed 26 jobs at "arizeai"
+    ("Airtable", "greenhouse", "airtable"),  # was listed under Lever -- actually Greenhouse, confirmed 3 jobs
+    ("Linear", "ashby", "linear"),
+    ("Modal", "ashby", "modal"),
+    ("Replit", "ashby", "replit"),
+    ("LangChain", "ashby", "langchain"),
+    ("Hinge Health", "ashby", "hinge-health"),
+    ("OpenAI", "ashby", "openai"),
+    ("Notion", "ashby", "notion"),
+    ("Perplexity", "ashby", "perplexity"),
+    ("Ramp", "ashby", "ramp"),
+    ("Cursor", "ashby", "cursor"),
+    ("Braintrust", "ashby", "braintrust"),
+    ("Kong", "ashby", "kong"),
 ]
